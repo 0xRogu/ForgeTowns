@@ -1,0 +1,5 @@
+{
+  "max_claims": 10,
+  "claim_cost": 5,
+  "daily_upkeep": 2
+}
