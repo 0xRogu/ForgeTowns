@@ -4,12 +4,11 @@ import dev.rogu.forgetowns.commands.NationCommand;
 import dev.rogu.forgetowns.commands.TownCommand;
 import dev.rogu.forgetowns.config.ForgeTownsConfig;
 import dev.rogu.forgetowns.data.ClaimManager;
-import dev.rogu.forgetowns.data.ModCapabilities;
+import dev.rogu.forgetowns.event.PlayerMovementTracker;
+import dev.rogu.forgetowns.util.TextFormatter;
 import dev.rogu.forgetowns.data.TownDataStorage;
 import dev.rogu.forgetowns.gui.TownMenu;
-import dev.rogu.forgetowns.gui.TownMenuProvider;
 import dev.rogu.forgetowns.item.PlotWandItem;
-
 import dev.rogu.forgetowns.network.SyncTownDataPacket;
 import dev.rogu.forgetowns.network.SyncTownDataPacketHandler;
 import dev.rogu.forgetowns.network.TextInputPacket;
@@ -21,13 +20,11 @@ import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
-
-
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
-
+import net.neoforged.neoforge.event.server.ServerStoppedEvent; // For cleanup
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -49,14 +46,32 @@ public class ForgeTowns {
     );
     public static final DeferredRegister<MenuType<?>> MENU_TYPES =
         DeferredRegister.create(Registries.MENU, MOD_ID);
+    /**
+     * Registered Plot Wand item for ForgeTowns.
+     */
     public static final DeferredHolder<Item, Item> PLOT_WAND = ITEMS.register(
         "plot_wand",
         PlotWandItem::new
     );
+    /**
+     * Registered Town Menu type for ForgeTowns.
+     */
     public static final DeferredHolder<MenuType<?>, MenuType<TownMenu>> TOWN_MENU =
-        MENU_TYPES.register("town_menu", () -> TownMenuProvider.TYPE);
+        MENU_TYPES.register("town_menu", () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(dev.rogu.forgetowns.gui.TownMenu::new));
+    /**
+     * Registered Nation Menu type for ForgeTowns.
+     */
+    public static final DeferredHolder<MenuType<?>, MenuType<dev.rogu.forgetowns.gui.NationMenu>> NATION_MENU =
+        MENU_TYPES.register("nation_menu", () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(dev.rogu.forgetowns.gui.NationMenu::new));
 
     public ForgeTowns(IEventBus modEventBus) {
+        // Register capability attachment types (NeoForge 1.21.1 capability system)
+        dev.rogu.forgetowns.data.ModCapabilities.ATTACHMENT_TYPES.register(modEventBus);
+        // Register cleanup for static data on server stop
+        NeoForge.EVENT_BUS.addListener(this::onServerStopped);
+        // Register data persistence listeners
+        NeoForge.EVENT_BUS.addListener(this::onLevelLoad);
+        NeoForge.EVENT_BUS.addListener(this::onLevelSave);
         // Register config
         ForgeTownsConfig.register();
         NeoForge.EVENT_BUS.addListener(this::serverStarting);
@@ -70,11 +85,10 @@ public class ForgeTowns {
         NeoForge.EVENT_BUS.addListener(ClaimManager::onInteract);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLogout);
         NeoForge.EVENT_BUS.register(ChatListener.class); // Register ChatListener here
+        NeoForge.EVENT_BUS.register(PlayerMovementTracker.class); // Register PlayerMovementTracker
         ITEMS.register(modEventBus);
         MENU_TYPES.register(modEventBus);
-        // PacketHandler no longer needs to be registered as it doesn't have any @SubscribeEvent methods
-        ModCapabilities.ATTACHMENT_TYPES.register(modEventBus); // Register Attachment Types
-        modEventBus.addListener(this::registerPackets); // Register packet handlers
+        modEventBus.addListener(this::registerPackets);
         modEventBus.addListener(this::addCreative);
     }
     
@@ -90,6 +104,15 @@ public class ForgeTowns {
     }
 
     private void onServerStarted(ServerStartingEvent event) {
+        // Display colorful startup message with more flair
+        LOGGER.info(TextFormatter.consoleHighlight("✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦"));
+        LOGGER.info(TextFormatter.consoleSuccess("  ⚒ ForgeTowns Mod v1.0 Successfully Loaded! ⚒"));
+        LOGGER.info(TextFormatter.consoleInfo("  ⚜ Town and Nation Management System Ready ⚜"));
+        LOGGER.info(TextFormatter.consoleWarning("  ⚡ Chunk Protection System Activated ⚡"));
+        LOGGER.info(TextFormatter.consoleSuccess("  ⚔ Nation Warfare System Online ⚔"));
+        LOGGER.info(TextFormatter.consoleInfo("  ⛏ Plot Management Ready ⛏"));
+        LOGGER.info(TextFormatter.consoleHighlight("✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦"));
+        
         // Register the server tick task using a thread
         Thread tickThread = new Thread(() -> {
             while (true) {
@@ -126,8 +149,29 @@ public class ForgeTowns {
 
     private void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            // Only run on the server side
+            if (player.getServer() == null) return;
             ClaimManager.plotSelections.remove(player.getUUID());
         }
+    }
+
+    // Data persistence event listeners
+    private void onLevelLoad(net.neoforged.neoforge.event.level.LevelEvent.Load event) {
+        // Only run on the server side
+        if (event.getLevel().getServer() == null) return;
+        TownDataStorage.load(event);
+    }
+    private void onLevelSave(net.neoforged.neoforge.event.level.LevelEvent.Save event) {
+        // Only run on the server side
+        if (event.getLevel().getServer() == null) return;
+        TownDataStorage.save(event);
+    }
+
+    // Cleanup static data on server stop to prevent memory leaks and cross-world contamination
+    private void onServerStopped(ServerStoppedEvent event) {
+        dev.rogu.forgetowns.event.PlayerMovementTracker.clearStaticData();
+        dev.rogu.forgetowns.data.ClaimManager.clearStaticData();
+        dev.rogu.forgetowns.data.TownDataStorage.clearStaticData();
     }
 
     // Method to register network packet handlers
@@ -139,6 +183,13 @@ public class ForgeTowns {
             SyncTownDataPacket.TYPE,
             SyncTownDataPacket.CODEC,
             SyncTownDataPacketHandler::handle
+        );
+
+        // Register SyncConfirmPacket (Client -> Server)
+        registrar.playToServer(
+            dev.rogu.forgetowns.network.SyncConfirmPacket.TYPE,
+            dev.rogu.forgetowns.network.SyncConfirmPacket.CODEC,
+            dev.rogu.forgetowns.network.SyncConfirmPacket::handle
         );
 
         // Register TextInputPacket (Client -> Server)

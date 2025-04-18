@@ -1,5 +1,4 @@
 package dev.rogu.forgetowns.gui;
-
 import dev.rogu.forgetowns.data.Town;
 import dev.rogu.forgetowns.data.TownDataStorage;
 import net.minecraft.network.FriendlyByteBuf;
@@ -7,8 +6,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.MenuType;
-import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
+
+
 
 public class TownMenuProvider implements net.minecraft.world.MenuProvider {
 
@@ -25,9 +24,6 @@ public class TownMenuProvider implements net.minecraft.world.MenuProvider {
         this.town = town;
     }
 
-    public static final MenuType<TownMenu> TYPE = IMenuTypeExtension.create(
-        TownMenu::new
-    );
 
     @Override
     public Component getDisplayName() {

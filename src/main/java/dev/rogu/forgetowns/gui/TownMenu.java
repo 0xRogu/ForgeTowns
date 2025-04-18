@@ -1,4 +1,5 @@
 package dev.rogu.forgetowns.gui;
+import dev.rogu.forgetowns.ForgeTowns;
 
 import dev.rogu.forgetowns.data.ClaimManager;
 import dev.rogu.forgetowns.data.GovernmentType;
@@ -51,7 +52,7 @@ public class TownMenu extends AbstractContainerMenu {
         Town town,
         TownMenuProvider.MenuMode mode
     ) {
-        super(TownMenuProvider.TYPE, containerId);
+        super(ForgeTowns.TOWN_MENU.get(), containerId);
         this.town = town;
         this.mode = mode;
         this.inventory = new ItemStackHandler(18); // 18 slots for all options (2 rows)
@@ -74,17 +75,26 @@ public class TownMenu extends AbstractContainerMenu {
             this.addSlot(new Slot(playerInventory, col, 8 + col * 18, 160));
         }
 
-        // Custom slots based on mode
-        if (town != null) {
-            if (mode == TownMenuProvider.MenuMode.MAIN) {
-                setupMainMenu(playerInventory.player);
-            } else if (mode == TownMenuProvider.MenuMode.PLOT_MANAGEMENT) {
-                setupPlotManagementMenu(playerInventory.player);
-            }
+        // Always add the same number/order of custom slots regardless of whether town is null
+        if (mode == TownMenuProvider.MenuMode.MAIN) {
+            setupMainMenu(playerInventory.player);
+        } else if (mode == TownMenuProvider.MenuMode.PLOT_MANAGEMENT) {
+            setupPlotManagementMenu(playerInventory.player);
         }
+        // If town is null (client-side), setupMainMenu/setupPlotManagementMenu should use dummy/empty items as needed, but slots must exist.
     }
 
     private void setupMainMenu(Player player) {
+        if (town == null) {
+            // Populate with dummy/empty info item, skip owner logic
+            if (inventory instanceof IItemHandlerModifiable modifiableInventory) {
+                modifiableInventory.setStackInSlot(
+                    0,
+                    createNamedItem(Items.PAPER, Component.literal("No Town Data"))
+                );
+            }
+            return;
+        }
         boolean isOwner = town.getOwner().equals(player.getUUID());
         boolean isOwnerOrAssistant =
             isOwner || town.getAssistants().contains(player.getUUID());
@@ -792,11 +802,10 @@ public class TownMenu extends AbstractContainerMenu {
     }
 
     private String getPlayerName(UUID uuid) {
-        Player player = getPlayer()
-            .level()
-            .getServer()
-            .getPlayerList()
-            .getPlayer(uuid);
+        Player player = null;
+        if (getPlayer() != null && getPlayer().level() != null && getPlayer().level().getServer() != null) {
+            player = getPlayer().level().getServer().getPlayerList().getPlayer(uuid);
+        }
         return player != null ? player.getName().getString() : "Unknown";
     }
     

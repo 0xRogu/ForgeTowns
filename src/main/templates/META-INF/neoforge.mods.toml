@@ -23,7 +23,7 @@ license="GNU GPL v3"
 modId="forgetowns" #mandatory
 
 # The version number of the mod
-version="0.1.0" #mandatory
+version="0.2.0" #mandatory
 
 # A display name for the mod
 displayName="ForgeTowns" #mandatory

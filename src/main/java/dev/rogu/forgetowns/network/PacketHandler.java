@@ -10,25 +10,26 @@ import net.minecraft.server.level.ServerPlayer;
  */
 public class PacketHandler {
 
-    // Packet registration is now handled in ForgeTowns.java using the RegisterPayloadHandlersEvent
-    
-
-
     /**
-     * Sends a packet from the server to a specific client.
-     * This is a placeholder implementation until we can properly update
-     * the networking system for NeoForge 1.21.1.
+     * Sends a packet from the server to a specific client using NeoForge 1.21.1 API.
+     * @param packet The packet to send (must implement CustomPacketPayload)
+     * @param player The target server-side player
      */
     public static void sendToClient(CustomPacketPayload packet, ServerPlayer player) {
-        // This will be implemented properly in a future update
+        if (player.connection != null) {
+            player.connection.send(packet);
+        }
     }
     
     /**
-     * Sends a packet from the client to the server.
-     * This is a placeholder implementation until we can properly update
-     * the networking system for NeoForge 1.21.1.
+     * Sends a packet from the client to the server using NeoForge 1.21.1 API.
+     * @param packet The packet to send (must implement CustomPacketPayload)
      */
     public static void sendToServer(CustomPacketPayload packet) {
-        // This will be implemented properly in a future update
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.getConnection() != null) {
+            mc.getConnection().send(packet);
+        }
     }
 }
+

@@ -125,22 +125,24 @@ public class Plot {
         if (signPos == null) return;
         if (!(level.getBlockEntity(signPos) instanceof SignBlockEntity sign)) return;
 
-        SignText frontText;
+        SignText frontText = sign.getText(true);
         if (owner == null && type == PlotType.PURCHASABLE) {
-            frontText = new SignText()
-                .setMessage(0, Component.literal("[Plot For Sale]"))
-                .setMessage(1, Component.literal(price + " Emeralds"))
-                .setMessage(2, Component.literal("Right-click to buy"))
-                .setMessage(3, Component.empty());
+            frontText.setMessage(0, Component.literal("[Plot For Sale]"));
+            frontText.setMessage(1, Component.literal(price + " Emeralds"));
+            frontText.setMessage(2, Component.literal("Right-click to buy"));
+            frontText.setMessage(3, Component.empty());
         } else {
-            String ownerName = owner != null ? level.getServer().getProfileCache().get(owner).map(GameProfile::getName).orElse("Unknown") : "";
-            frontText = new SignText()
-                .setMessage(0, Component.literal("[" + type.getName() + " Plot]")) // Use type name
-                .setMessage(1, Component.literal(owner != null ? "Owner: " + ownerName : "Unowned")) // Show owner or unowned
-                .setMessage(2, Component.empty())
-                .setMessage(3, Component.empty()); // Clear line 3 for non-purchasable/owned
+            String ownerName = "";
+            if (owner != null && level.getServer() != null) {
+                ownerName = level.getServer().getProfileCache().get(owner).map(GameProfile::getName).orElse("Unknown");
+            }
+            frontText.setMessage(0, Component.literal("[" + type.getName() + " Plot]"));
+            frontText.setMessage(1, Component.literal(owner != null ? "Owner: " + ownerName : "Unowned"));
+            frontText.setMessage(2, Component.empty());
+            frontText.setMessage(3, Component.empty());
         }
-        sign.setText(frontText, true); // Set front text
+        sign.setChanged();
+        level.sendBlockUpdated(signPos, sign.getBlockState(), sign.getBlockState(), net.minecraft.world.level.block.Block.UPDATE_ALL);
     }
 
     public void removeSign(Level level) {

@@ -18,6 +18,13 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 import dev.rogu.forgetowns.data.Plot.PlotType;
 
 public class TownDataStorage {
+    /**
+     * Clears all static town and nation data. Call on world unload/server stop to prevent memory leaks or cross-world contamination.
+     */
+    public static void clearStaticData() {
+        towns.clear();
+        nations.clear();
+    }
 
     private static final Gson GSON = new GsonBuilder()
         .setPrettyPrinting()
@@ -37,6 +44,10 @@ public class TownDataStorage {
     }
 
     public static void save(LevelEvent.Save event) {
+        if (event.getLevel().getServer() == null) {
+            // Only run on the server side!
+            return;
+        }
         Path path = event
             .getLevel()
             .getServer()
@@ -49,6 +60,10 @@ public class TownDataStorage {
     }
 
     public static void load(LevelEvent.Load event) {
+        if (event.getLevel().getServer() == null) {
+            // Only run on the server side!
+            return;
+        }
         Path path = event
             .getLevel()
             .getServer()

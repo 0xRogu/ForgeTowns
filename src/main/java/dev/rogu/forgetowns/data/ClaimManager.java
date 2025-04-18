@@ -1,5 +1,6 @@
 package dev.rogu.forgetowns.data;
 
+import dev.rogu.forgetowns.util.MessageHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -14,47 +15,73 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import dev.rogu.forgetowns.commands.TownCommand;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ClaimManager {
-    public static final Map<UUID, List<BlockPos>> plotSelections = new HashMap<>();
+    /**
+     * Removes up to 'count' of the given item from the player's inventory.
+     * Returns the number of items removed.
+     */
+    public static int removeItems(ServerPlayer player, net.minecraft.world.item.Item item, int count) {
+        int removed = 0;
+        for (ItemStack stack : player.getInventory().items) {
+            if (stack.getItem() == item) {
+                int toRemove = Math.min(count - removed, stack.getCount());
+                stack.shrink(toRemove);
+                removed += toRemove;
+                if (removed >= count) break;
+            }
+        }
+        return removed;
+    }
+    /**
+     * Clears all static claim selection data. Call on world unload/server stop to prevent memory leaks.
+     */
+    public static void clearStaticData() {
+        plotSelections.clear();
+    }
+    public static final Map<UUID, List<BlockPos>> plotSelections = new ConcurrentHashMap<>();
 
-    public static boolean claimChunk(Town town, ChunkPos pos, ServerPlayer player) {
+    public static ClaimResult claimChunk(Town town, ChunkPos pos, ServerPlayer player) {
         ServerLevel level = player.serverLevel();
         if (!level.hasChunk(pos.x, pos.z)) {
-            player.sendSystemMessage(Component.literal("Chunk not loaded."));
-            return false;
+            return new ClaimResult(false, "Chunk not loaded.", MessageHelper.MessageType.TOWN_WARNING);
         }
         var chunk = level.getChunk(pos.x, pos.z);
 
         if (chunk.hasData(ModCapabilities.TOWN_CLAIM.get())) {
             ClaimCapability existingCap = chunk.getData(ModCapabilities.TOWN_CLAIM.get());
             if (existingCap.getTown() != null) {
-                player.sendSystemMessage(Component.literal("This chunk is already claimed by " + existingCap.getTown().getName()));
-                return false;
+                return new ClaimResult(false, "This chunk is already claimed by " + existingCap.getTown().getName(), MessageHelper.MessageType.TOWN_WARNING);
             }
         }
 
-        if (town.getClaimedChunks().size() >= 10 || player.getInventory().countItem(Items.EMERALD) < 5) {
-            if (town.getClaimedChunks().size() >= 10) player.sendSystemMessage(Component.literal("Town has reached the maximum number of claimed chunks."));
-            else player.sendSystemMessage(Component.literal("You need 5 emeralds to claim a chunk."));
-            return false;
+        int claimCost = dev.rogu.forgetowns.config.ForgeTownsConfig.chunkClaimCost;
+        if (town.getClaimedChunks().size() >= 10) {
+            return new ClaimResult(false, "Town has reached the maximum number of claimed chunks.", MessageHelper.MessageType.TOWN_ERROR);
         }
-
-        player.getInventory().removeItem(new ItemStack(Items.EMERALD, 5));
+        if (player.getInventory().countItem(Items.EMERALD) < claimCost) {
+            return new ClaimResult(false, "You need " + claimCost + " emeralds to claim a chunk.", MessageHelper.MessageType.TOWN_WARNING);
+        }
+        int removed = removeItems(player, Items.EMERALD, claimCost);
+        if (removed < claimCost) {
+            return new ClaimResult(false, "You need " + claimCost + " emeralds to claim a chunk.", MessageHelper.MessageType.TOWN_WARNING);
+        }
         town.getClaimedChunks().add(pos);
 
         ClaimCapability capability = chunk.getData(ModCapabilities.TOWN_CLAIM.get());
         capability.setTown(town);
         chunk.setUnsaved(true);
 
-        player.sendSystemMessage(Component.literal("Chunk claimed for " + town.getName()));
-        return true;
+        return new ClaimResult(true, "Chunk claimed successfully!", MessageHelper.MessageType.TOWN_SUCCESS);
     }
 
     public static void unclaimChunk(Town town, ChunkPos pos, ServerLevel level) {
@@ -67,7 +94,10 @@ public class ClaimManager {
     }
 
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+            // Only run on the server side!
+            return;
+        }
         Entity entity = event.getPlayer();
         if (!(entity instanceof ServerPlayer player)) return;
 
@@ -82,7 +112,10 @@ public class ClaimManager {
     }
 
     public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+            // Only run on the server side!
+            return;
+        }
         Entity entity = event.getEntity();
         ChunkPos chunkPos = new ChunkPos(event.getPos());
 
@@ -104,7 +137,10 @@ public class ClaimManager {
     }
 
     public static void onMultiBlockPlace(BlockEvent.EntityMultiPlaceEvent event) {
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+            // Only run on the server side!
+            return;
+        }
         Entity entity = event.getEntity();
 
         if (!(entity instanceof ServerPlayer player)) {
@@ -130,7 +166,10 @@ public class ClaimManager {
     }
 
     public static void onExplosion(ExplosionEvent.Detonate event) {
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) {
+            // Only run on the server side!
+            return;
+        }
 
         event.getAffectedBlocks().removeIf(pos -> {
             ChunkPos chunkPos = new ChunkPos(pos);
@@ -184,11 +223,15 @@ public class ClaimManager {
         return null;
     }
 
-    public static void selectPlotCorner(ServerPlayer player, BlockPos pos) {
+    public static ClaimResult selectPlotCorner(ServerPlayer player, BlockPos pos, ItemStack usedItem) {
+        CustomData customData = usedItem.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+        if (!customData.copyTag().getBoolean("ForgeTownsPlotWand")) {
+            return new ClaimResult(false, "You must use the Plot Wand to select corners!", MessageHelper.MessageType.TOWN_ERROR);
+        }
+
         Town town = TownCommand.findPlayerTown(player);
         if (town == null || (!town.getOwner().equals(player.getUUID()) && !town.getAssistants().contains(player.getUUID()))) {
-            player.sendSystemMessage(Component.literal("You must be an Owner or Assistant!"));
-            return;
+            return new ClaimResult(false, "You must be an Owner or Assistant of a town to select plot corners!", MessageHelper.MessageType.TOWN_ERROR);
         }
 
         List<BlockPos> selections = plotSelections.computeIfAbsent(player.getUUID(), k -> new ArrayList<>());
@@ -196,28 +239,27 @@ public class ClaimManager {
         ChunkPos chunkPos = new ChunkPos(pos);
         Town chunkTown = getTownAt(level, chunkPos);
         if (chunkTown == null || !chunkTown.equals(town)) {
-            player.sendSystemMessage(Component.literal("Corner must be within a chunk claimed by your town!"));
-            return;
+            return new ClaimResult(false, "Corner must be within a chunk claimed by your town!", MessageHelper.MessageType.TOWN_ERROR);
         }
 
         selections.add(pos);
-        player.sendSystemMessage(Component.literal("Corner " + selections.size() + " selected at " + pos.toShortString()));
-        if (selections.size() == 4) {
-            player.sendSystemMessage(Component.literal("All 4 corners selected. Use /town plot create <price> [type] to finalize."));
+        int size = selections.size();
+        if (size == 4) {
+            return new ClaimResult(true, "All 4 corners selected. Use /town plot create <price> [type] to finalize.", MessageHelper.MessageType.TOWN_SUCCESS);
+        } else {
+            return new ClaimResult(true, "Corner " + size + " selected at " + pos.toShortString(), MessageHelper.MessageType.TOWN_INFO);
         }
     }
 
-    public static void createPlot(ServerPlayer player, Town town, int price, Plot.PlotType type) {
+    public static ClaimResult createPlot(ServerPlayer player, Town town, int price, Plot.PlotType type) {
         List<BlockPos> corners = plotSelections.remove(player.getUUID());
         if (corners == null || corners.size() != 4) {
-            player.sendSystemMessage(Component.literal("Select all 4 corners with the Plot Wand first!"));
-            return;
+            return new ClaimResult(false, "Select all 4 corners with the Plot Wand first!", MessageHelper.MessageType.TOWN_ERROR);
         }
 
         Plot plot = new Plot(corners, price, type);
         if (plot.overlapsSpawn(town.getHomeBlock())) {
-            player.sendSystemMessage(Component.literal("Plot cannot overlap the town spawn!"));
-            return;
+            return new ClaimResult(false, "Plot cannot overlap the town spawn!", MessageHelper.MessageType.TOWN_ERROR);
         }
 
         BlockPos signPos = player.blockPosition().above();
@@ -225,64 +267,61 @@ public class ClaimManager {
             player.level().setBlock(signPos, Blocks.OAK_SIGN.defaultBlockState(), 3);
             plot.setSignPos(signPos);
             town.addPlot(plot);
-            player.sendSystemMessage(Component.literal(type.getName() + " plot created with price " + price + " emeralds!"));
+            return new ClaimResult(true, type.getName() + " plot created with price " + price + " emeralds!", MessageHelper.MessageType.TOWN_SUCCESS);
         } else {
-            player.sendSystemMessage(Component.literal("Cannot place sign at " + signPos.toShortString() + "! Plot creation failed."));
+            return new ClaimResult(false, "Cannot place sign at " + signPos.toShortString() + "! Plot creation failed.", MessageHelper.MessageType.TOWN_ERROR);
         }
     }
 
-    public static void inviteToPlot(ServerPlayer owner, Town town, ServerPlayer target) {
+    public static ClaimResult inviteToPlot(ServerPlayer owner, Town town, ServerPlayer target) {
         Plot plot = town.getPlots().stream()
             .filter(p -> p.getOwner() != null && p.getOwner().equals(owner.getUUID()))
             .findFirst()
             .orElse(null);
         if (plot == null || plot.getType() != Plot.PlotType.PURCHASABLE) {
-            owner.sendSystemMessage(Component.literal("You don’t own a purchasable plot to invite to!"));
-            return;
+            return new ClaimResult(false, "You don’t own a purchasable plot to invite to!", MessageHelper.MessageType.TOWN_ERROR);
         }
 
         if (!town.getResidents().contains(target.getUUID())) {
-            owner.sendSystemMessage(Component.literal(target.getName().getString() + " must be a resident of " + town.getName() + "!"));
-            return;
+            return new ClaimResult(false, target.getName().getString() + " must be a resident of " + town.getName() + "!", MessageHelper.MessageType.TOWN_ERROR);
         }
 
         plot.invite(target.getUUID());
-        owner.sendSystemMessage(Component.literal("Invited " + target.getName().getString() + " to your plot!"));
-        target.sendSystemMessage(Component.literal("You’ve been invited to " + owner.getName().getString() + "'s plot!"));
+        // The owner and target should be notified by the command handler
+        return new ClaimResult(true, "Invited " + target.getName().getString() + " to your plot!", MessageHelper.MessageType.TOWN_SUCCESS);
     }
 
-    private static void handlePlotPurchase(ServerPlayer player, Town town, BlockPos signPos) {
+    public static ClaimResult handlePlotPurchase(ServerPlayer player, Town town, BlockPos signPos) {
         Plot plot = town.getPlots().stream().filter(p -> p.getSignPos().equals(signPos)).findFirst().orElse(null);
         if (plot == null || plot.getOwner() != null || !plot.getType().isPurchasable()) {
-            player.sendSystemMessage(Component.literal("This plot is not for sale!"));
-            return;
+            return new ClaimResult(false, "This plot is not for sale!", MessageHelper.MessageType.TOWN_WARNING);
         }
 
         if (!town.getResidents().contains(player.getUUID())) {
-            player.sendSystemMessage(Component.literal("You must be a resident of " + town.getName() + " to buy a plot!"));
-            return;
+            return new ClaimResult(false, "You must be a resident of " + town.getName() + " to buy a plot!", MessageHelper.MessageType.TOWN_WARNING);
         }
 
         int price = plot.getPrice();
         if (player.getInventory().countItem(Items.EMERALD) < price) {
-            player.sendSystemMessage(Component.literal("You need " + price + " emeralds to buy this plot!"));
-            return;
+            return new ClaimResult(false, "You need " + price + " emeralds to buy this plot!", MessageHelper.MessageType.TOWN_WARNING);
         }
 
-        player.getInventory().removeItem(new ItemStack(Items.EMERALD, price));
+        int removed = removeItems(player, Items.EMERALD, price);
+        if (removed < price) {
+            return new ClaimResult(false, "You need " + price + " emeralds to buy this plot!", MessageHelper.MessageType.TOWN_WARNING);
+        }
         plot.setOwner(player.getUUID());
         town.depositEmeralds(price);
-        player.sendSystemMessage(Component.literal("You’ve purchased this plot for " + price + " emeralds!"));
         if (player.level().getBlockEntity(signPos) instanceof SignBlockEntity sign) {
-            SignText purchasedText = new SignText()
-                .setMessage(0, Component.literal("[Purchased Plot]"))
-                .setMessage(1, Component.literal("Owner: " + player.getName().getString()))
-                .setMessage(2, Component.empty()) // Clear other lines if needed
-                .setMessage(3, Component.empty());
-            sign.setText(purchasedText, true); // Set front text
-            // We might need to mark the sign dirty? Let's assume setText does this for now.
-            // serverLevel.sendBlockUpdated(signPos, sign.getBlockState(), sign.getBlockState(), Block.UPDATE_ALL);
+            SignText frontText = sign.getText(true);
+            frontText.setMessage(0, MessageHelper.styled("[Purchased Plot]", MessageHelper.MessageType.TOWN_SUCCESS));
+            frontText.setMessage(1, MessageHelper.styled("Owner: " + player.getName().getString(), MessageHelper.MessageType.TOWN_INFO));
+            frontText.setMessage(2, Component.empty());
+            frontText.setMessage(3, Component.empty());
+            sign.setChanged();
+            player.level().sendBlockUpdated(signPos, sign.getBlockState(), sign.getBlockState(), net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
+        return new ClaimResult(true, "You’ve purchased this plot for " + price + " emeralds!", MessageHelper.MessageType.TOWN_SUCCESS);
     }
 
     private static boolean canBuild(ServerPlayer player, Town town, BlockPos pos) {

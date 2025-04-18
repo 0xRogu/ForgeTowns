@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/handheld",
   "textures": {
-    "layer0": "forgetowns:item/plot_wand"
+    "layer0": "minecraft:item/stick"
   }
 }

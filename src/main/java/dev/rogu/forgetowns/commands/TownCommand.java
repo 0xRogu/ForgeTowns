@@ -4,17 +4,19 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.rogu.forgetowns.data.ClaimManager;
+import dev.rogu.forgetowns.data.ClaimResult;
 import dev.rogu.forgetowns.data.ClaimCapability;
+import dev.rogu.forgetowns.ForgeTowns; // Import ForgeTowns for item access
 import dev.rogu.forgetowns.data.GovernmentType;
 import dev.rogu.forgetowns.data.ModCapabilities;
 import dev.rogu.forgetowns.data.Plot;
 import dev.rogu.forgetowns.data.Town;
 import dev.rogu.forgetowns.data.TownDataStorage;
 import dev.rogu.forgetowns.gui.TownMenuProvider;
+import dev.rogu.forgetowns.util.MessageHelper;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -49,10 +51,35 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Town already exists!"
+                                        MessageHelper.styled(
+                                            "Town already exists!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
+                                return 0;
+                            }
+                            // Prevent player from creating a new town if already in one
+                            if (findPlayerTown(player) != null) {
+                                ctx
+                                    .getSource()
+                                    .sendFailure(
+                                        MessageHelper.styled(
+                                            "You are already a member of a town! Leave your current town before creating a new one.",
+                                            MessageHelper.MessageType.TOWN_ERROR
+                                        )
+                                    );
+                                return 0;
+                            }
+                            // Deduct emeralds for town creation
+                            int cost = dev.rogu.forgetowns.config.ForgeTownsConfig.townCreationCost;
+                            int removed = ClaimManager.removeItems(player, Items.EMERALD, cost);
+                            if (removed < cost) {
+                                ctx.getSource().sendFailure(
+                                    MessageHelper.styled(
+                                        "You need " + cost + " emeralds to create a town!",
+                                        MessageHelper.MessageType.TOWN_ERROR
+                                    )
+                                );
                                 return 0;
                             }
                             Town town = new Town(
@@ -64,13 +91,12 @@ public class TownCommand {
                             TownDataStorage.getTowns().put(name, town);
                             ctx
                                 .getSource()
-                                .sendSuccess(
-                                    () ->
-                                        Component.literal(
-                                            "Town " + name + " created!"
-                                        ),
-                                    false
-                                );
+                                .sendSystemMessage(
+                                    MessageHelper.styled(
+                                        "Town " + name + " created!",
+                                        MessageHelper.MessageType.TOWN_SUCCESS
+                                    )
+                                ); // Only send once
                             return 1;
                         })
                     )
@@ -86,7 +112,10 @@ public class TownCommand {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal("You’re not in a town!")
+                                    MessageHelper.styled(
+                                        "You’re not in a town!",
+                                        MessageHelper.MessageType.TOWN_ERROR
+                                    )
                                 );
                             return 0;
                         }
@@ -97,35 +126,31 @@ public class TownCommand {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal(
-                                        "Only Owners and Assistants can claim chunks!"
+                                    MessageHelper.styled(
+                                        "Only Owners and Assistants can claim chunks!",
+                                        MessageHelper.MessageType.TOWN_ERROR
                                     )
-                                );
+                                ); // Only send once
                             return 0;
                         }
                         ChunkPos pos = new ChunkPos(player.blockPosition());
-                        if (ClaimManager.claimChunk(town, pos, player)) {
-                            ctx
-                                .getSource()
-                                .sendSuccess(
-                                    () ->
-                                        Component.literal(
-                                            "Chunk claimed for " +
-                                            town.getName() +
-                                            "!"
-                                        ),
-                                    false
-                                );
-                            return 1;
-                        } else {
-                            ctx
-                                .getSource()
-                                .sendFailure(
-                                    Component.literal(
-                                        "Failed to claim chunk! (Already claimed, limit reached, or insufficient emeralds)"
-                                    )
-                                );
-                            return 0;
+                        ClaimResult claimResult = ClaimManager.claimChunk(town, pos, player);
+if (claimResult.success) {
+                            ctx.getSource().sendSystemMessage(
+    MessageHelper.styled(
+        claimResult.message,
+        claimResult.type
+    )
+);
+return 1;
+} else {
+    ctx.getSource().sendFailure(
+        MessageHelper.styled(
+            claimResult.message,
+            claimResult.type
+        )
+    );
+    return 0;
                         }
                     })
                 )
@@ -140,7 +165,10 @@ public class TownCommand {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal("You’re not in a town!")
+                                    MessageHelper.styled(
+                                        "You’re not in a town!",
+                                        MessageHelper.MessageType.TOWN_ERROR
+                                    )
                                 );
                             return 0;
                         }
@@ -151,8 +179,9 @@ public class TownCommand {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal(
-                                        "Only Owners and Assistants can unclaim chunks!"
+                                    MessageHelper.styled(
+                                        "Only Owners and Assistants can unclaim chunks!",
+                                        MessageHelper.MessageType.TOWN_ERROR
                                     )
                                 );
                             return 0;
@@ -165,24 +194,24 @@ public class TownCommand {
                             ClaimManager.unclaimChunk(town, pos, serverLevel);
                             ctx
                                 .getSource()
-                                .sendSuccess(
-                                    () ->
-                                        Component.literal(
-                                            "Chunk unclaimed from " +
-                                            town.getName() +
-                                            "!"
-                                        ),
-                                    false
+                                .sendSystemMessage(
+                                    MessageHelper.styled(
+                                        "Chunk unclaimed from " +
+                                        town.getName() +
+                                        "!",
+                                        MessageHelper.MessageType.TOWN_SUCCESS
+                                    )
                                 );
                             return 1;
                         } else {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal(
+                                    MessageHelper.styled(
                                         "This chunk isn’t claimed by " +
                                         town.getName() +
-                                        "!"
+                                        "!",
+                                        MessageHelper.MessageType.TOWN_ERROR
                                     )
                                 );
                             return 0;
@@ -208,8 +237,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You’re not in a town!"
+                                        MessageHelper.styled(
+                                            "You’re not in a town!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -221,8 +251,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Only Owners and Assistants can invite!"
+                                        MessageHelper.styled(
+                                            "Only Owners and Assistants can invite!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -230,21 +261,21 @@ public class TownCommand {
                             town.addResident(target.getUUID());
                             ctx
                                 .getSource()
-                                .sendSuccess(
-                                    () ->
-                                        Component.literal(
-                                            target.getName().getString() +
-                                            " invited to " +
-                                            town.getName() +
-                                            "!"
-                                        ),
-                                    false
+                                .sendSystemMessage(
+                                    MessageHelper.styled(
+                                        target.getName().getString() +
+                                        " invited to " +
+                                        town.getName() +
+                                        "!",
+                                        MessageHelper.MessageType.TOWN_SUCCESS
+                                    )
                                 );
                             target.sendSystemMessage(
-                                Component.literal(
+                                MessageHelper.styled(
                                     "You’ve been invited to " +
                                     town.getName() +
-                                    "!"
+                                    "!",
+                                    MessageHelper.MessageType.TOWN_SUCCESS
                                 )
                             );
                             return 1;
@@ -270,8 +301,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You’re not in a town!"
+                                        MessageHelper.styled(
+                                            "You’re not in a town!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -280,8 +312,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Only the Owner can kick!"
+                                        MessageHelper.styled(
+                                            "Only the Owner can kick!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -292,21 +325,21 @@ public class TownCommand {
                                 town.removeResident(target.getUUID());
                                 ctx
                                     .getSource()
-                                    .sendSuccess(
-                                        () ->
-                                            Component.literal(
-                                                target.getName().getString() +
-                                                " kicked from " +
-                                                town.getName() +
-                                                "!"
-                                            ),
-                                        false
+                                    .sendSystemMessage(
+                                        MessageHelper.styled(
+                                            target.getName().getString() +
+                                            " kicked from " +
+                                            town.getName() +
+                                            "!",
+                                            MessageHelper.MessageType.TOWN_SUCCESS
+                                        )
                                     );
                                 target.sendSystemMessage(
-                                    Component.literal(
+                                    MessageHelper.styled(
                                         "You’ve been kicked from " +
                                         town.getName() +
-                                        "!"
+                                        "!",
+                                        MessageHelper.MessageType.TOWN_SUCCESS
                                     )
                                 );
                                 return 1;
@@ -314,9 +347,10 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
+                                        MessageHelper.styled(
                                             target.getName().getString() +
-                                            " isn’t a resident!"
+                                            " isn’t a resident!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -343,8 +377,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You’re not in a town!"
+                                        MessageHelper.styled(
+                                            "You’re not in a town!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -353,8 +388,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Only the Owner can promote!"
+                                        MessageHelper.styled(
+                                            "Only the Owner can promote!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -365,21 +401,21 @@ public class TownCommand {
                                 town.addAssistant(target.getUUID());
                                 ctx
                                     .getSource()
-                                    .sendSuccess(
-                                        () ->
-                                            Component.literal(
-                                                target.getName().getString() +
-                                                " promoted to Assistant in " +
-                                                town.getName() +
-                                                "!"
-                                            ),
-                                        false
+                                    .sendSystemMessage(
+                                        MessageHelper.styled(
+                                            target.getName().getString() +
+                                            " promoted to Assistant in " +
+                                            town.getName() +
+                                            "!",
+                                            MessageHelper.MessageType.TOWN_SUCCESS
+                                        )
                                     );
                                 target.sendSystemMessage(
-                                    Component.literal(
+                                    MessageHelper.styled(
                                         "You’ve been promoted to Assistant in " +
                                         town.getName() +
-                                        "!"
+                                        "!",
+                                        MessageHelper.MessageType.TOWN_SUCCESS
                                     )
                                 );
                                 return 1;
@@ -387,9 +423,10 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
+                                        MessageHelper.styled(
                                             target.getName().getString() +
-                                            " isn’t a resident!"
+                                            " isn’t a resident!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -416,8 +453,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You’re not in a town!"
+                                        MessageHelper.styled(
+                                            "You’re not in a town!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -426,8 +464,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Only the Owner can demote!"
+                                        MessageHelper.styled(
+                                            "Only the Owner can demote!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -438,21 +477,21 @@ public class TownCommand {
                                 town.getAssistants().remove(target.getUUID());
                                 ctx
                                     .getSource()
-                                    .sendSuccess(
-                                        () ->
-                                            Component.literal(
-                                                target.getName().getString() +
-                                                " demoted to resident in " +
-                                                town.getName() +
-                                                "!"
-                                            ),
-                                        false
+                                    .sendSystemMessage(
+                                        MessageHelper.styled(
+                                            target.getName().getString() +
+                                            " demoted to resident in " +
+                                            town.getName() +
+                                            "!",
+                                            MessageHelper.MessageType.TOWN_SUCCESS
+                                        )
                                     );
                                 target.sendSystemMessage(
-                                    Component.literal(
+                                    MessageHelper.styled(
                                         "You’ve been demoted to resident in " +
                                         town.getName() +
-                                        "!"
+                                        "!",
+                                        MessageHelper.MessageType.TOWN_SUCCESS
                                     )
                                 );
                                 return 1;
@@ -460,9 +499,10 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
+                                        MessageHelper.styled(
                                             target.getName().getString() +
-                                            " isn’t an Assistant!"
+                                            " isn’t an Assistant!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -485,8 +525,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You’re not in a town!"
+                                        MessageHelper.styled(
+                                            "You’re not in a town!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -507,23 +548,23 @@ public class TownCommand {
                                 town.depositEmeralds(amount);
                                 ctx
                                     .getSource()
-                                    .sendSuccess(
-                                        () ->
-                                            Component.literal(
-                                                amount +
-                                                " emeralds deposited into " +
-                                                town.getName() +
-                                                "!"
-                                            ),
-                                        false
+                                    .sendSystemMessage(
+                                        MessageHelper.styled(
+                                            amount +
+                                            " emeralds deposited into " +
+                                            town.getName() +
+                                            "!",
+                                            MessageHelper.MessageType.TOWN_SUCCESS
+                                        )
                                     );
                                 return 1;
                             } else {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You don’t have enough emeralds!"
+                                        MessageHelper.styled(
+                                            "You don’t have enough emeralds!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -546,8 +587,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You’re not in a town!"
+                                        MessageHelper.styled(
+                                            "You’re not in a town!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -556,8 +598,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Only the Owner can withdraw!"
+                                        MessageHelper.styled(
+                                            "Only the Owner can withdraw!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -572,25 +615,25 @@ public class TownCommand {
                                     .add(new ItemStack(Items.EMERALD, amount));
                                 ctx
                                     .getSource()
-                                    .sendSuccess(
-                                        () ->
-                                            Component.literal(
-                                                amount +
-                                                " emeralds withdrawn from " +
-                                                town.getName() +
-                                                "!"
-                                            ),
-                                        false
+                                    .sendSystemMessage(
+                                        MessageHelper.styled(
+                                            amount +
+                                            " emeralds withdrawn from " +
+                                            town.getName() +
+                                            "!",
+                                            MessageHelper.MessageType.TOWN_SUCCESS
+                                        )
                                     );
                                 return 1;
                             } else {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
+                                        MessageHelper.styled(
                                             "Not enough emeralds in " +
                                             town.getName() +
-                                            "'s treasury!"
+                                            "'s treasury!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -613,8 +656,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You’re not in a town!"
+                                        MessageHelper.styled(
+                                            "You’re not in a town!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -623,8 +667,9 @@ public class TownCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Only the Owner can set the government type!"
+                                        MessageHelper.styled(
+                                            "Only the Owner can set the government type!",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -640,23 +685,23 @@ public class TownCommand {
                                 town.setGovernmentType(type);
                                 ctx
                                     .getSource()
-                                    .sendSuccess(
-                                        () ->
-                                            Component.literal(
-                                                town.getName() +
-                                                " government set to " +
-                                                type.name() +
-                                                "!"
-                                            ),
-                                        false
+                                    .sendSystemMessage(
+                                        MessageHelper.styled(
+                                            town.getName() +
+                                            " government set to " +
+                                            type.name() +
+                                            "!",
+                                            MessageHelper.MessageType.TOWN_SUCCESS
+                                        )
                                     );
                                 return 1;
                             } catch (IllegalArgumentException e) {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Invalid government type! Use: ANARCHY, DEMOCRACY, MONARCHY"
+                                        MessageHelper.styled(
+                                            "Invalid government type! Use: ANARCHY, DEMOCRACY, MONARCHY",
+                                            MessageHelper.MessageType.TOWN_ERROR
                                         )
                                     );
                                 return 0;
@@ -699,8 +744,9 @@ public class TownCommand {
                                                 ctx
                                                     .getSource()
                                                     .sendFailure(
-                                                        Component.literal(
-                                                            "You must be an Owner or Assistant!"
+                                                        MessageHelper.styled(
+                                                            "You must be an Owner or Assistant!",
+                                                            MessageHelper.MessageType.TOWN_ERROR
                                                         )
                                                     );
                                                 return 0;
@@ -726,8 +772,9 @@ public class TownCommand {
                                                 ctx
                                                     .getSource()
                                                     .sendFailure(
-                                                        Component.literal(
-                                                            "Invalid plot type! Use: purchasable, community"
+                                                        MessageHelper.styled(
+                                                            "Invalid plot type! Use: purchasable, community",
+                                                            MessageHelper.MessageType.TOWN_ERROR
                                                         )
                                                     );
                                                 return 0;
@@ -758,8 +805,9 @@ public class TownCommand {
                                             ctx
                                                 .getSource()
                                                 .sendFailure(
-                                                    Component.literal(
-                                                        "You must be an Owner or Assistant!"
+                                                    MessageHelper.styled(
+                                                        "You must be an Owner or Assistant!",
+                                                        MessageHelper.MessageType.TOWN_ERROR
                                                     )
                                                 );
                                             return 0;
@@ -796,8 +844,9 @@ public class TownCommand {
                                         ctx
                                             .getSource()
                                             .sendFailure(
-                                                Component.literal(
-                                                    "You’re not in a town!"
+                                                MessageHelper.styled(
+                                                    "You’re not in a town!",
+                                                    MessageHelper.MessageType.TOWN_ERROR
                                                 )
                                             );
                                         return 0;
@@ -812,17 +861,66 @@ public class TownCommand {
                             )
                         )
                 )
+                // Give plot wand (Owner/Assistant only)
+                .then(Commands.literal("give")
+                    .then(Commands.literal("wand")
+                        // /town give wand
+                        .executes(ctx -> givePlotWandTownMember(ctx.getSource(), ctx.getSource().getPlayerOrException(), ctx.getSource().getPlayerOrException(), 1))
+                        // /town give wand [count]
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                            .executes(ctx -> givePlotWandTownMember(ctx.getSource(), ctx.getSource().getPlayerOrException(), ctx.getSource().getPlayerOrException(), IntegerArgumentType.getInteger(ctx, "count")))
+                        )
+                        // /town give wand [player]
+                        .then(Commands.argument("player", EntityArgument.player())
+                            .executes(ctx -> givePlotWandTownMember(ctx.getSource(), ctx.getSource().getPlayerOrException(), EntityArgument.getPlayer(ctx, "player"), 1))
+                            // /town give wand [player] [count]
+                            .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                                .executes(ctx -> givePlotWandTownMember(ctx.getSource(), ctx.getSource().getPlayerOrException(), EntityArgument.getPlayer(ctx, "player"), IntegerArgumentType.getInteger(ctx, "count")))
+                            )
+                        )
+                    )
+                )
                 // Open the town menu
                 .then(
                     Commands.literal("menu").executes(ctx -> {
                         ServerPlayer player = ctx
                             .getSource()
                             .getPlayerOrException();
-                        player.openMenu(
-                            new TownMenuProvider(TownMenuProvider.MenuMode.MAIN)
-                        );
+                        // Find the town the player belongs to (using existing helper method)
+                        Town playerTown = findPlayerTown(player);
+                        if (playerTown != null) {
+    dev.rogu.forgetowns.data.TownSyncManager.queueMenuOpen(player, playerTown.getName(), TownMenuProvider.MenuMode.MAIN);
+    dev.rogu.forgetowns.network.PacketHandler.sendToClient(new dev.rogu.forgetowns.network.SyncTownDataPacket(playerTown), player);
+} else {
+    ctx.getSource().sendFailure(dev.rogu.forgetowns.util.MessageHelper.styled(
+        "You are not a member of a town!",
+        dev.rogu.forgetowns.util.MessageHelper.MessageType.TOWN_ERROR
+    ));
+}
                         return 1;
                     })
+                )
+                // Admin commands (requires OP level 2)
+                .then(Commands.literal("admin")
+                    .requires(source -> source.hasPermission(2))
+                    .then(Commands.literal("give")
+                        .then(Commands.literal("wand")
+                            // /town admin give wand
+                            .executes(ctx -> givePlotWand(ctx.getSource(), ctx.getSource().getPlayerOrException(), 1))
+                            // /town admin give wand [count]
+                            .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                                .executes(ctx -> givePlotWand(ctx.getSource(), ctx.getSource().getPlayerOrException(), IntegerArgumentType.getInteger(ctx, "count")))
+                            )
+                            // /town admin give wand [player]
+                            .then(Commands.argument("player", EntityArgument.player())
+                                .executes(ctx -> givePlotWand(ctx.getSource(), EntityArgument.getPlayer(ctx, "player"), 1))
+                                // /town admin give wand [player] [count]
+                                .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                                    .executes(ctx -> givePlotWand(ctx.getSource(), EntityArgument.getPlayer(ctx, "player"), IntegerArgumentType.getInteger(ctx, "count")))
+                                )
+                            )
+                        )
+                    )
                 )
         );
     }
@@ -832,5 +930,86 @@ public class TownCommand {
             if (town.getResidents().contains(player.getUUID())) return town;
         }
         return null;
+    }
+
+    // Helper method for '/town give wand' (Owner/Assistant permissions)
+    private static int givePlotWandTownMember(CommandSourceStack source, ServerPlayer sender, ServerPlayer targetPlayer, int count) {
+        Town senderTown = findPlayerTown(sender);
+
+        // Check if sender is in a town and is Owner/Assistant
+        if (senderTown == null || (!senderTown.getOwner().equals(sender.getUUID()) && !senderTown.getAssistants().contains(sender.getUUID()))) {
+            source.sendFailure(MessageHelper.styled("You must be an Owner or Assistant in a town to use this command.", MessageHelper.MessageType.TOWN_ERROR));
+            return 0;
+        }
+
+        // Check if target is the sender or an assistant in the sender's town
+        boolean isTargetSelf = sender.getUUID().equals(targetPlayer.getUUID());
+        boolean isTargetAssistant = senderTown.getAssistants().contains(targetPlayer.getUUID());
+
+        if (!isTargetSelf && !isTargetAssistant) {
+             source.sendFailure(MessageHelper.styled("You can only give Plot Wands to yourself or Assistants in your town.", MessageHelper.MessageType.TOWN_ERROR));
+             return 0;
+        }
+
+        // Use the admin give method's logic, but with town success/error messages
+        if (count <= 0) {
+            source.sendFailure(MessageHelper.styled("Count must be positive!", MessageHelper.MessageType.TOWN_ERROR));
+            return 0;
+        }
+
+        ItemStack wandStack = new ItemStack(ForgeTowns.PLOT_WAND.get(), count);
+        boolean added = targetPlayer.getInventory().add(wandStack);
+
+        if (added) {
+            source.sendSystemMessage(MessageHelper.styled(
+                "Gave " + count + " Plot Wand(s) to " + targetPlayer.getName().getString(), 
+                MessageHelper.MessageType.TOWN_SUCCESS // Use regular town success
+            ));
+            return 1;
+        } else {
+             source.sendFailure(MessageHelper.styled(
+                targetPlayer.getName().getString() + "'s inventory is full!", 
+                MessageHelper.MessageType.TOWN_ERROR // Use regular town error
+            ));
+             targetPlayer.drop(wandStack, false);
+             source.sendSystemMessage(MessageHelper.styled(
+                "Dropped " + count + " Plot Wand(s) near " + targetPlayer.getName().getString() + ".", 
+                MessageHelper.MessageType.TOWN_INFO // Use town info for drop message
+            ));
+            return 1; 
+        }
+    }
+
+    // Helper method for the give wand command
+    private static int givePlotWand(CommandSourceStack source, ServerPlayer targetPlayer, int count) {
+        if (count <= 0) {
+            source.sendFailure(MessageHelper.styled("Count must be positive!", MessageHelper.MessageType.TOWN_ADMIN_ERROR));
+            return 0;
+        }
+
+        ItemStack wandStack = new ItemStack(ForgeTowns.PLOT_WAND.get(), count);
+        // The NBT tag is automatically added by PlotWandItem.getDefaultInstance()
+
+        boolean added = targetPlayer.getInventory().add(wandStack);
+
+        if (added) {
+            source.sendSystemMessage(MessageHelper.styled(
+                "Gave " + count + " Plot Wand(s) to " + targetPlayer.getName().getString(), 
+                MessageHelper.MessageType.TOWN_ADMIN_SUCCESS
+            ));
+            return 1;
+        } else {
+             source.sendFailure(MessageHelper.styled(
+                targetPlayer.getName().getString() + "'s inventory is full!", 
+                MessageHelper.MessageType.TOWN_ADMIN_ERROR
+            ));
+            // Try dropping the item at the player's feet as a fallback
+             targetPlayer.drop(wandStack, false);
+             source.sendSystemMessage(MessageHelper.styled(
+                "Dropped " + count + " Plot Wand(s) near " + targetPlayer.getName().getString() + ".", 
+                MessageHelper.MessageType.TOWN_ADMIN_SUCCESS
+            ));
+            return 1; // Still counts as success in this case
+        }
     }
 }

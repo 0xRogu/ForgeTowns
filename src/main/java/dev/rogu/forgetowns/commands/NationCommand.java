@@ -8,9 +8,9 @@ import dev.rogu.forgetowns.data.Town;
 import dev.rogu.forgetowns.data.TownDataStorage;
 import dev.rogu.forgetowns.gui.NationMenu;
 import dev.rogu.forgetowns.gui.NationMenuProvider;
+import dev.rogu.forgetowns.util.MessageHelper;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -42,8 +42,9 @@ public class NationCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "Nation already exists!"
+                                        MessageHelper.styled(
+                                            "Nation already exists!",
+                                            MessageHelper.MessageType.NATION_ERROR
                                         )
                                     );
                                 return 0;
@@ -56,8 +57,9 @@ public class NationCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal(
-                                            "You must be a town owner!"
+                                        MessageHelper.styled(
+                                            "You must be a town owner!",
+                                            MessageHelper.MessageType.NATION_ERROR
                                         )
                                     );
                                 return 0;
@@ -66,12 +68,11 @@ public class NationCommand {
                             TownDataStorage.getNations().put(name, nation);
                             ctx
                                 .getSource()
-                                .sendSuccess(
-                                    () ->
-                                        Component.literal(
-                                            "Nation " + name + " created!"
-                                        ),
-                                    false
+                                .sendSystemMessage(
+                                    MessageHelper.styled(
+                                        "Nation " + name + " created!",
+                                        MessageHelper.MessageType.NATION_SUCCESS
+                                    )
                                 );
                             return 1;
                         })
@@ -96,7 +97,10 @@ public class NationCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal("Town not found!")
+                                        MessageHelper.styled(
+                                            "Town not found!",
+                                            MessageHelper.MessageType.NATION_ERROR
+                                        )
                                     );
                                 return 0;
                             }
@@ -111,15 +115,14 @@ public class NationCommand {
                                     nation.addTown(targetTown);
                                     ctx
                                         .getSource()
-                                        .sendSuccess(
-                                            () ->
-                                                Component.literal(
-                                                    "Invited " +
-                                                    townName +
-                                                    " to " +
-                                                    nation.getName()
-                                                ),
-                                            false
+                                        .sendSystemMessage(
+                                            MessageHelper.styled(
+                                                "Invited " +
+                                                townName +
+                                                " to " +
+                                                nation.getName(),
+                                                MessageHelper.MessageType.NATION_SUCCESS
+                                            )
                                         );
                                     return 1;
                                 }
@@ -127,8 +130,9 @@ public class NationCommand {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal(
-                                        "You must be a nation leader!"
+                                    MessageHelper.styled(
+                                        "You must be a nation leader!",
+                                        MessageHelper.MessageType.NATION_ERROR
                                     )
                                 );
                             return 0;
@@ -154,7 +158,10 @@ public class NationCommand {
                                 ctx
                                     .getSource()
                                     .sendFailure(
-                                        Component.literal("Nation not found!")
+                                        MessageHelper.styled(
+                                            "Nation not found!",
+                                            MessageHelper.MessageType.NATION_ERROR
+                                        )
                                     );
                                 return 0;
                             }
@@ -170,13 +177,12 @@ public class NationCommand {
                                     targetNation.setWar(true);
                                     ctx
                                         .getSource()
-                                        .sendSuccess(
-                                            () ->
-                                                Component.literal(
-                                                    "Declared war on " +
-                                                    nationName
-                                                ),
-                                            false
+                                        .sendSystemMessage(
+                                            MessageHelper.styled(
+                                                "Declared war on " +
+                                                nationName,
+                                                MessageHelper.MessageType.NATION_SUCCESS
+                                            )
                                         );
                                     return 1;
                                 }
@@ -184,8 +190,9 @@ public class NationCommand {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal(
-                                        "You must be a nation leader!"
+                                    MessageHelper.styled(
+                                        "You must be a nation leader!",
+                                        MessageHelper.MessageType.NATION_ERROR
                                     )
                                 );
                             return 0;
@@ -219,23 +226,23 @@ public class NationCommand {
                                         nation.setGovernmentType(type);
                                         ctx
                                             .getSource()
-                                            .sendSuccess(
-                                                () ->
-                                                    Component.literal(
-                                                        "Set " +
-                                                        nation.getName() +
-                                                        " government to " +
-                                                        type.getName()
-                                                    ),
-                                                false
+                                            .sendSystemMessage(
+                                                MessageHelper.styled(
+                                                    "Set " +
+                                                    nation.getName() +
+                                                    " government to " +
+                                                    type.getName(),
+                                                    MessageHelper.MessageType.NATION_SUCCESS
+                                                )
                                             );
                                         return 1;
                                     } catch (IllegalArgumentException e) {
                                         ctx
                                             .getSource()
                                             .sendFailure(
-                                                Component.literal(
-                                                    "Invalid government type! Use: democracy, monarchy, anarchy"
+                                                MessageHelper.styled(
+                                                    "Invalid government type! Use: democracy, monarchy, anarchy",
+                                                    MessageHelper.MessageType.NATION_ERROR
                                                 )
                                             );
                                         return 0;
@@ -245,8 +252,9 @@ public class NationCommand {
                             ctx
                                 .getSource()
                                 .sendFailure(
-                                    Component.literal(
-                                        "You must be a nation leader!"
+                                    MessageHelper.styled(
+                                        "You must be a nation leader!",
+                                        MessageHelper.MessageType.NATION_ERROR
                                     )
                                 );
                             return 0;

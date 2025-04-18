@@ -1,7 +1,7 @@
 package dev.rogu.forgetowns.client;
 
 import dev.rogu.forgetowns.ForgeTowns;
-import dev.rogu.forgetowns.gui.TownMenuProvider;
+
 import dev.rogu.forgetowns.gui.TownScreen;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -30,7 +30,7 @@ public class ClientSetup {
     @SubscribeEvent
     public static void registerMenuScreens(RegisterMenuScreensEvent event) {
         // Register the TownMenu screen
-        event.register(TownMenuProvider.TYPE, TownScreen::new);
+        event.register(ForgeTowns.TOWN_MENU.get(), TownScreen::new);
         ForgeTowns.LOGGER.info("Registered TownMenu screen");
     }
 }

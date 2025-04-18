@@ -25,6 +25,10 @@ public class SyncTownDataPacketHandler {
             Town receivedTown = payload.reconstructTown();
             // Update the client-side storage with the received town data
             ClientTownData.updateTown(receivedTown);
+            // Send SyncConfirmPacket to the server to confirm sync
+            dev.rogu.forgetowns.network.PacketHandler.sendToServer(
+                new dev.rogu.forgetowns.network.SyncConfirmPacket(receivedTown.getName())
+            );
         });
     }
 }

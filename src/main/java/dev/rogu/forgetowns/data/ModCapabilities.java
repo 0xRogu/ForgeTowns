@@ -1,5 +1,12 @@
 package dev.rogu.forgetowns.data;
 
+/**
+ * Capability registration for ForgeTowns using the NeoForge 1.21.1+ AttachmentType pattern.
+ *
+ * This replaces the legacy CapabilityManager/CapabilityToken/LazyOptional system.
+ * All capability data should be registered here and attached using AttachmentType and DeferredRegister.
+ */
+
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.neoforged.neoforge.attachment.AttachmentType;
@@ -16,9 +23,4 @@ public class ModCapabilities {
         ATTACHMENT_TYPES.register("town_claim", () -> 
             AttachmentType.serializable(ClaimCapability::new).build());
 
-    /*
-    public static void registerCapabilities(final RegisterCapabilitiesEvent event) {
-        event.register(ClaimCapability.class);
-    }
-    */
 }

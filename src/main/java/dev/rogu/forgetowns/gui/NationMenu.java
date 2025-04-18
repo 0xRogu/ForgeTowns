@@ -1,5 +1,7 @@
 package dev.rogu.forgetowns.gui;
 
+import dev.rogu.forgetowns.ForgeTowns;
+
 import dev.rogu.forgetowns.data.GovernmentType;
 import dev.rogu.forgetowns.data.Nation;
 import dev.rogu.forgetowns.data.TownDataStorage;
@@ -8,14 +10,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.core.component.DataComponents;
 import java.util.UUID;
-import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import net.minecraft.network.FriendlyByteBuf;
@@ -23,9 +23,6 @@ import net.minecraft.world.item.component.CustomData;
 
 public class NationMenu extends AbstractContainerMenu {
 
-    public static final MenuType<NationMenu> TYPE = IMenuTypeExtension.create(
-        NationMenu::new
-    );
 
     private final MenuMode mode;
     private final Nation nation;
@@ -36,7 +33,7 @@ public class NationMenu extends AbstractContainerMenu {
     }
 
     public NationMenu(int id, Inventory playerInv, FriendlyByteBuf extraData) {
-        super(TYPE, id);
+        super(ForgeTowns.NATION_MENU.get(), id);
         this.mode = MenuMode.MAIN;
         this.nation = findPlayerNation(playerInv.player);
 
@@ -210,10 +207,10 @@ public class NationMenu extends AbstractContainerMenu {
     }
 
     private String getPlayerName(UUID uuid, Player player) {
-        ServerPlayer serverPlayer = player
-            .getServer()
-            .getPlayerList()
-            .getPlayer(uuid);
+        ServerPlayer serverPlayer = null;
+        if (player != null && player.getServer() != null) {
+            serverPlayer = player.getServer().getPlayerList().getPlayer(uuid);
+        }
         return serverPlayer != null
             ? serverPlayer.getName().getString()
             : uuid.toString();
